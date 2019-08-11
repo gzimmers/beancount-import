@@ -29,7 +29,6 @@ import re
 import threading
 import time
 
-import atomicwrites
 from beancount.core.data import Open, Transaction, Balance, Commodity, Entries, Directive, Meta, Posting
 import beancount.core.data
 import beancount.loader
@@ -231,20 +230,6 @@ def get_partially_booked_entries(pre_booking_entries: Entries,
             _partially_book_entry(entry, post_booking_matches[0]))
     return partially_booked_entries
 
-
-class _AtomicWriter(atomicwrites.AtomicWriter):
-    """Wrapper that calls `os.stat` after close but before the rename."""
-
-    def __init__(self, path, **kwargs):
-        super().__init__(path, **kwargs)
-        self.stat_result_after_close = None
-
-    def sync(self, f):
-        super().sync(f)
-        f.close()
-        self.stat_result_after_close = os.stat(f.name)
-
-
 def _get_journal_contents(filename: str):
     with open(filename, 'r', encoding='utf-8') as f:
         return f.read()
@@ -411,20 +396,11 @@ class JournalEditor(object):
             raise RuntimeError(
                 'Journal file modified concurrently: %r' % filename)
 
-        writer = _AtomicWriter(
-            filename, mode='w+', encoding='utf-8', newline='\n', overwrite=True)
-        with writer.open() as f:
-            f.write(new_data)
-        # On MS Windows, closing a file that has just been written causes the
-        # modification time to change.  Therefore, we must close the file before
-        # checking the modification time in order to get a modification time
-        # that we can later use for comparisons to see if the file has been
-        # modified since the last time we wrote to it.  However, we must check
-        # the modification time before performing the rename, as otherwise we
-        # may obtain a modification time that reflects additional modifications.
-        # The _AtomicWriter wrapper takes care of checking the modification time
-        # after closing the file but before renaming it.
-        mtime = writer.stat_result_after_close.st_mtime
+        
+        # Removed atomic writer due to docker incompatability
+        with open(filename, "w+") as fil:
+            fil.write(new_data)
+        mtime = os.stat(filename).st_mtime
         self.journal_load_time[filename] = mtime
         self.cached_lines[filename] = new_lines
 
